@@ -5,6 +5,7 @@ import sys
 import urllib.request
 import urllib.error
 import ssl
+import time
 
 try:
     from ssl import CertificateError as sslerr
@@ -78,7 +79,8 @@ def create_driver(cli_parsed, user_agent=None):
         profile.update_preferences()
         driver = webdriver.Firefox(profile, capabilities=capabilities, options=options, service_log_path=cli_parsed.selenium_log_path)
         driver.set_page_load_timeout(cli_parsed.timeout)
-        driver.set_window_size(cli_parsed.width,cli_parsed.height)
+        # Set initial window size - height will be adjusted after page load
+        driver.set_window_size(cli_parsed.width, 1080)
         return driver
     except Exception as e:
         if 'Failed to find firefox binary' in str(e):
@@ -111,7 +113,7 @@ def capture_host(cli_parsed, http_object, driver, ua=None):
         if cli_parsed.cookies is not None:
             for cookie in cli_parsed.cookies:
                 driver.add_cookie(cookie)
-            driver.get(http_object.remote_system)
+        driver.get(http_object.remote_system)
     except KeyboardInterrupt:
         print('[*] Skipping: {0}'.format(http_object.remote_system))
         http_object.error_state = 'Skipped'
@@ -149,7 +151,7 @@ def capture_host(cli_parsed, http_object, driver, ua=None):
                 if cli_parsed.cookies is not None:
                     for cookie in cli_parsed.cookies:
                         driver.add_cookie(cookie)
-                    driver.get(http_object.remote_system)
+                driver.get(http_object.remote_system)
                 break
             except TimeoutException:
                 # Another timeout results in an error state and a return
@@ -187,7 +189,96 @@ def capture_host(cli_parsed, http_object, driver, ua=None):
         except Exception as e:
             pass
 
+    # Set cookie and localStorage for cookie acceptance
+    try:
+        # This is necessary for hiding Amasty settings modal
+        # Also for this, you need to pass "amcookie_allowed=0" as a cookie (--cookies amcookie_allowed=0)
+        driver.execute_script("localStorage.setItem('am-last-cookie-acceptance', '1733216227');")
+    except Exception as e:
+        print('[*] Error setting localStorage for cookie acceptance')
+
+    # Reset window size to standard dimensions before measuring
+    driver.set_window_size(cli_parsed.width, 800)  # Reset to standard height
+    time.sleep(0.5)  # Let the page adjust
+
+    # Scroll to bottom and back to top to ensure all elements are loaded
+    driver.execute_script("""
+        async function smoothScrollSequence() {
+          await new Promise(resolve => {
+            window.scrollTo({
+              top: 1000,
+              behavior: 'smooth'
+            });
+            setTimeout(resolve, 1000);
+          });
+
+          await new Promise(resolve => {
+            window.scrollTo({
+              top: 2000,
+              behavior: 'smooth'
+            });
+            setTimeout(resolve, 1000);
+          });
+
+          await new Promise(resolve => {
+            window.scrollTo({
+              top: 3000,
+              behavior: 'smooth'
+            });
+            setTimeout(resolve, 1000);
+          });
+
+          await new Promise(resolve => {
+            window.scrollTo({
+              top: 4000,
+              behavior: 'smooth'
+            });
+            setTimeout(resolve, 1000);
+          });
+
+          await new Promise(resolve => {
+            window.scrollTo({
+              top: 6000,
+              behavior: 'smooth'
+            });
+            setTimeout(resolve, 1000);
+          });
+
+          await new Promise(resolve => {
+            window.scrollTo({
+              top: 20000,
+              behavior: 'smooth'
+            });
+            setTimeout(resolve, 1000);
+          });
+
+          await new Promise(resolve => {
+            window.scrollTo({
+              top: 20000,
+              behavior: 'smooth'
+            });
+            setTimeout(resolve, 2000);
+          });
+
+          await new Promise(resolve => {
+            window.scrollTo({
+              top: 0,
+              behavior: 'smooth'
+            });
+            setTimeout(resolve, 2000);
+          });
+        }
+
+        // To execute the scrolling sequence:
+        smoothScrollSequence();
+    """)
+
     do_delay(cli_parsed)
+
+    # Get the page height and adjust window size for full screenshot
+    page_height = driver.execute_script("return Math.max( document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight );")
+    print('[*] page height ' + str(page_height))
+    driver.set_window_size(cli_parsed.width, page_height+110)
 
     # Save our screenshot to the specified directory
     try:
